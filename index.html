@@ -9,7 +9,11 @@
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Hiragino Sans", sans-serif; color: #222; background: #fff; }
-  main { padding: 12px 16px 80px; }
+  main { padding: calc(env(safe-area-inset-top) + 24px) 16px 80px; }
+  .field { position: relative; }
+  .field input { padding-right: 36px; }
+  .field input::-webkit-search-cancel-button { -webkit-appearance: none; }
+  .clear-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border: none; background: none; color: #aaa; font-size: 16px; }
   .topbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
   .topbar h1 { font-size: 20px; font-weight: 700; margin: 0; }
   .headbtns { display: flex; align-items: center; gap: 8px; }
@@ -42,7 +46,10 @@
     </div>
   </div>
   <section id="search">
-    <input id="q" type="search" placeholder="言葉を入力" autocomplete="off">
+    <div class="field">
+      <input id="q" type="search" placeholder="言葉を入力" autocomplete="off">
+      <button id="clearBtn" class="clear-btn" aria-label="入力を消す" hidden>✕</button>
+    </div>
     <ul id="cands"></ul>
   </section>
   <section id="history" hidden>
@@ -109,8 +116,7 @@ function row(word, onRemove) {
   const a = document.createElement("a");
   a.textContent = word;
   a.href = kotobankUrl(word);
-  a.target = "_blank";
-  a.rel = "noopener";
+  a.rel = "noreferrer";
   a.addEventListener("click", () => { addHistory(word); if (onRemove) renderHistory(); });
   li.append(a);
   if (onRemove) {
@@ -137,9 +143,17 @@ function renderHistory() {
 // 候補はWikipediaの見出し検索から取得(コトバンクには自動アクセスしない)
 let timer, seq = 0;
 $("q").addEventListener("input", () => {
+  $("clearBtn").hidden = !$("q").value;
   clearTimeout(timer);
   timer = setTimeout(suggest, 250);
 });
+$("clearBtn").onclick = () => {
+  $("q").value = "";
+  $("clearBtn").hidden = true;
+  $("cands").replaceChildren();
+  seq++;
+  $("q").focus();
+};
 async function suggest() {
   const text = $("q").value.trim();
   const ul = $("cands");
