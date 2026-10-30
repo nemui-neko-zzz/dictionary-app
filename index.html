@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>ふむふむ</title>
@@ -63,8 +62,8 @@
 <script>
 const $ = id => document.getElementById(id);
 const KEY = "kotoba";
-// 「〇〇 コトバンク」の検索1件目に直接飛ぶ(DuckDuckGoの "\" 指定)
-const kotobankUrl = w => "https://duckduckgo.com/?q=" + encodeURIComponent("\\" + w + " コトバンク");
+// コトバンク内の検索1件目に直接飛ぶ(DuckDuckGoの "\" 指定)。飛べない端末でも結果がコトバンクだけになる
+const kotobankUrl = w => "https://duckduckgo.com/?q=" + encodeURIComponent("\\" + w + " site:kotobank.jp");
 
 // 古い形式が残っていても動くよう、読み込み時に形を整える
 function normalize(d) {
