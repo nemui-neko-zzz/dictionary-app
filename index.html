@@ -63,8 +63,8 @@
 <script>
 const $ = id => document.getElementById(id);
 const KEY = "kotoba";
-// 「〇〇 コトバンク」のGoogle検索1件目に直接飛ぶ(I'm Feeling Lucky)
-const kotobankUrl = w => "https://www.google.com/search?btnI=1&q=" + encodeURIComponent(w + " コトバンク");
+// 「〇〇 コトバンク」の検索1件目に直接飛ぶ(DuckDuckGoの "\" 指定)
+const kotobankUrl = w => "https://duckduckgo.com/?q=" + encodeURIComponent("\\" + w + " コトバンク");
 
 // 古い形式が残っていても動くよう、読み込み時に形を整える
 function normalize(d) {
