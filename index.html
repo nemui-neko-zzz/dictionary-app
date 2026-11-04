@@ -31,6 +31,20 @@
   nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; border-top: 1px solid #ddd; background: #fafafa; padding-bottom: env(safe-area-inset-bottom); }
   nav button { flex: 1; border: none; background: none; padding: 12px; font-size: 14px; color: #888; }
   nav button.on { color: #007aff; font-weight: bold; }
+  .history-tools { display:flex; gap:8px; margin:4px 0 8px; }
+  .history-tools button { flex:1; border:1px solid #ddd; background:#fff; border-radius:18px; padding:8px 4px; color:#666; font-size:13px; }
+  .history-tools button.on { background:#eef6ff; border-color:#2685d5; color:#1673c5; font-weight:700; }
+  .lang-icon { width:25px; height:25px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; margin:0 9px 0 3px; flex-shrink:0; }
+  .lang-ja { background:#e7f2ff; color:#1876c9; }
+  .lang-en { background:#e5f7ed; color:#16834a; }
+  .history-link { display:flex; align-items:center; flex:1; min-width:0; padding:10px 4px; color:inherit; text-decoration:none; font-size:17px; }
+  .history-link span:last-child { overflow-wrap:anywhere; }
+  .english-panel { padding-top:4px; }
+  .english-panel p { color:#777; font-size:13px; line-height:1.6; }
+  .alc-link { display:block; padding:14px; margin:12px 0 18px; border-radius:10px; background:#f2f7f3; color:#167343; text-decoration:none; font-weight:700; text-align:center; }
+  .add-row { display:flex; gap:8px; align-items:center; }
+  .add-row input { min-width:0; }
+  .add-row button { border:0; border-radius:8px; padding:12px 14px; background:#16834a; color:white; font-weight:700; white-space:nowrap; }
   [hidden] { display: none; }
 </style>
 </head>
@@ -52,13 +66,30 @@
     </div>
     <ul id="cands"></ul>
   </section>
+  <section id="english" hidden>
+    <div class="english-panel">
+      <p>英語の意味を調べるときは、公式の英辞郎 on the WEBを利用してください。</p>
+      <a class="alc-link" href="https://eow.alc.co.jp/" target="_blank" rel="noopener noreferrer">英辞郎 on the WEBを開く ↗</a>
+      <p>調べた単語を下に入力すると、このアプリの履歴に追加できます。</p>
+      <div class="add-row">
+        <input id="englishWord" type="text" placeholder="調べた英単語・フレーズ" autocomplete="off">
+        <button id="addEnglish">履歴に追加</button>
+      </div>
+    </div>
+  </section>
   <section id="history" hidden>
+    <div class="history-tools" aria-label="履歴の言語で絞り込み">
+      <button type="button" data-filter="all">すべて</button>
+      <button type="button" data-filter="ja">日本語</button>
+      <button type="button" data-filter="en">英語</button>
+    </div>
     <div id="count" class="count"></div>
     <ul id="hist"></ul>
   </section>
 </main>
 <nav>
-  <button id="tabSearch" class="on">検索</button>
+  <button id="tabJapanese" class="on">日本語</button>
+  <button id="tabEnglish">英語</button>
   <button id="tabHistory">履歴</button>
 </nav>
 
@@ -74,8 +105,20 @@ const kotobankUrl = w => "https://duckduckgo.com/?q=" + encodeURIComponent("\\" 
 
 // 古い形式が残っていても動くよう、読み込み時に形を整える
 function normalize(d) {
-  const h = d && Array.isArray(d.history) ? d.history.filter(x => typeof x === "string") : [];
-  return { history: h, updatedAt: (d && d.updatedAt) || 0 };
+  const raw = d && Array.isArray(d.history) ? d.history : [];
+  const h = raw.map(x => {
+    if (typeof x === "string") return { word: x, language: "ja" };
+    if (x && typeof x.word === "string" && (x.language === "ja" || x.language === "en")) return { word: x.word, language: x.language };
+    return null;
+  }).filter(Boolean);
+  const seen = new Set();
+  const unique = h.filter(x => {
+    const key = x.language + "|" + x.word;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { history: unique, updatedAt: (d && d.updatedAt) || 0 };
 }
 let state = (() => {
   try {
@@ -92,13 +135,14 @@ function save() {
   localStorage.setItem(KEY, JSON.stringify(state));
   if (!applyingRemote) pushToCloud();
 }
-function addHistory(w) {
-  state.history = [w, ...state.history.filter(x => x !== w)];
+function addHistory(word, language) {
+  const entry = { word, language };
+  state.history = [entry, ...state.history.filter(x => !(x.word === word && x.language === language))];
   save();
 }
-function removeHistory(w) {
-  if (!confirm("「" + w + "」を履歴から削除しますか？")) return;
-  state.history = state.history.filter(x => x !== w);
+function removeHistory(entry) {
+  if (!confirm("「" + entry.word + "」を履歴から削除しますか？")) return;
+  state.history = state.history.filter(x => !(x.word === entry.word && x.language === entry.language));
   save();
   renderHistory();
 }
@@ -117,27 +161,50 @@ function row(word, onRemove) {
   a.textContent = word;
   a.href = kotobankUrl(word);
   a.rel = "noreferrer";
-  a.addEventListener("click", () => { addHistory(word); if (onRemove) renderHistory(); });
+  a.addEventListener("click", () => { addHistory(word, "ja"); if (onRemove) renderHistory(); });
   li.append(a);
   if (onRemove) {
     const b = document.createElement("button");
     b.textContent = "削除";
-    b.addEventListener("click", () => onRemove(word));
+    b.addEventListener("click", () => onRemove({ word, language: "ja" }));
     li.append(b);
   }
   return li;
 }
 
+let historyFilter = localStorage.getItem("kotobaHistoryFilter") || "all";
+if (!["all", "ja", "en"].includes(historyFilter)) historyFilter = "all";
 function renderHistory() {
   const ul = $("hist");
   ul.replaceChildren();
-  const list = state.history;
-  $("count").textContent = list.length + "件の履歴";
+  document.querySelectorAll("[data-filter]").forEach(b => b.classList.toggle("on", b.dataset.filter === historyFilter));
+  const list = state.history.filter(x => historyFilter === "all" || x.language === historyFilter);
+  $("count").textContent = list.length + "件";
   if (!list.length) {
     ul.innerHTML = '<li class="note">まだ履歴はありません</li>';
     return;
   }
-  list.forEach(w => ul.append(row(w, removeHistory)));
+  list.forEach(entry => {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.className = "history-link";
+    a.href = entry.language === "ja" ? kotobankUrl(entry.word) : "https://eow.alc.co.jp/search?q=" + encodeURIComponent(entry.word);
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    const icon = document.createElement("span");
+    icon.className = "lang-icon " + (entry.language === "ja" ? "lang-ja" : "lang-en");
+    icon.textContent = entry.language === "ja" ? "あ" : "A";
+    icon.setAttribute("aria-label", entry.language === "ja" ? "日本語" : "英語");
+    const label = document.createElement("span");
+    label.textContent = entry.word;
+    a.append(icon, label);
+    li.append(a);
+    const b = document.createElement("button");
+    b.textContent = "削除";
+    b.addEventListener("click", () => removeHistory(entry));
+    li.append(b);
+    ul.append(li);
+  });
 }
 
 // 候補はWikipediaの見出し検索から取得(コトバンクには自動アクセスしない)
@@ -176,14 +243,35 @@ async function suggest() {
 }
 
 function show(tab) {
-  $("search").hidden = tab !== "search";
+  $("search").hidden = tab !== "japanese";
+  $("english").hidden = tab !== "english";
   $("history").hidden = tab !== "history";
-  $("tabSearch").className = tab === "search" ? "on" : "";
+  $("tabJapanese").className = tab === "japanese" ? "on" : "";
+  $("tabEnglish").className = tab === "english" ? "on" : "";
   $("tabHistory").className = tab === "history" ? "on" : "";
   if (tab === "history") renderHistory();
 }
-$("tabSearch").onclick = () => show("search");
+$("tabJapanese").onclick = () => show("japanese");
+$("tabEnglish").onclick = () => show("english");
 $("tabHistory").onclick = () => show("history");
+$("addEnglish").onclick = () => {
+  const input = $("englishWord");
+  const word = input.value.trim();
+  if (!word) { showToast("単語を入力してください"); return; }
+  addHistory(word, "en");
+  input.value = "";
+  showToast("英語の履歴に追加しました");
+};
+$("englishWord").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("addEnglish").click();
+});
+document.querySelectorAll("[data-filter]").forEach(b => {
+  b.addEventListener("click", () => {
+    historyFilter = b.dataset.filter;
+    localStorage.setItem("kotobaHistoryFilter", historyFilter);
+    renderHistory();
+  });
+});
 $("reloadBtn").onclick = () => location.reload();
 
 /* ===== クラウド同期 (Firebase + Googleログイン) ===== */
