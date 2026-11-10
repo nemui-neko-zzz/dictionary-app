@@ -84,31 +84,39 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const KEY = "kotoba";
+const KEY = "dictionary-app";
+const OLD_KEY = "kotoba"; // 改名前の保存名(引き継ぎ用。元のデータは消さない)
+// 改名前の保存名から引き継ぐ(新しい名前が無い時だけ)
+const lsGet = (k, oldK) => localStorage.getItem(k) ?? localStorage.getItem(oldK);
 // コトバンク内の検索1件目に直接飛ぶ(DuckDuckGoの "\" 指定)。飛べない端末でも結果がコトバンクだけになる
 const kotobankUrl = w => "https://duckduckgo.com/?q=" + encodeURIComponent("\\" + w + " site:kotobank.jp");
 // 英語はアルク(英辞郎)の検索結果ページを開く
 const alcUrl = w => "https://eow.alc.co.jp/search?q=" + encodeURIComponent(w);
 const urlOf = (lang, w) => lang === "en" ? alcUrl(w) : kotobankUrl(w);
-let hfilter = ["all", "ja", "en"].includes(localStorage.getItem("kotobaHistFilter")) ? localStorage.getItem("kotobaHistFilter") : "all";
-let lang = localStorage.getItem("kotobaLang") === "en" ? "en" : "ja";
+let hfilter = ["all", "ja", "en"].includes(lsGet("dictHistFilter", "kotobaHistFilter")) ? lsGet("dictHistFilter", "kotobaHistFilter") : "all";
+let lang = lsGet("dictLang", "kotobaLang") === "en" ? "en" : "ja";
 
 // 古い形式が残っていても動くよう、読み込み時に形を整える
 function normalize(d) {
   const ok = x => x && typeof x.w === "string" && (x.l === "ja" || x.l === "en");
   let items = d && Array.isArray(d.items) ? d.items.filter(ok).map(x => ({ w: x.w, l: x.l, t: x.t || 0 })) : null;
-  if (!items) { // 旧形式(言語別の配列)から引き継ぐ
-    const strs = a => Array.isArray(a) ? a.filter(x => typeof x === "string") : [];
-    items = [
-      ...strs(d && d.history).map(w => ({ w, l: "ja", t: 0 })),
-      ...strs(d && d.historyEn).map(w => ({ w, l: "en", t: 0 }))
-    ];
+  if (!items) { // 旧形式から引き継ぐ
+    // 旧形式A: history=[文字列](日本語), historyEn=[文字列](英語)
+    // 旧形式B: history=[{word, language}](日本語・英語が混在。並びは新しい順)
+    const conv = (a, defLang) => (Array.isArray(a) ? a : []).map(x => {
+      if (typeof x === "string") return { w: x, l: defLang, t: 0 };
+      if (x && typeof x.word === "string" && (x.language === "ja" || x.language === "en")) return { w: x.word, l: x.language, t: 0 };
+      return null;
+    }).filter(Boolean);
+    items = [...conv(d && d.history, "ja"), ...conv(d && d.historyEn, "en")];
+    const seen = new Set();
+    items = items.filter(x => { const k = x.l + "|" + x.w; if (seen.has(k)) return false; seen.add(k); return true; });
   }
   return { items, updatedAt: (d && d.updatedAt) || 0 };
 }
 let state = (() => {
   try {
-    const cur = localStorage.getItem(KEY);
+    const cur = lsGet(KEY, OLD_KEY);
     if (cur) return normalize(JSON.parse(cur));
     const old = JSON.parse(localStorage.getItem("history") || "[]"); // 初期版の保存形式
     return normalize({ history: old, updatedAt: old.length ? Date.now() : 0 });
@@ -175,7 +183,7 @@ function renderHistory() {
 }
 function setFilter(f) {
   hfilter = f;
-  localStorage.setItem("kotobaHistFilter", f);
+  localStorage.setItem("dictHistFilter", f);
   renderHistory();
 }
 $("fAll").onclick = () => setFilter("all");
@@ -227,7 +235,7 @@ async function suggest() {
 
 function setLang(l) {
   lang = l;
-  localStorage.setItem("kotobaLang", l);
+  localStorage.setItem("dictLang", l);
   $("langJa").className = l === "ja" ? "on" : "";
   $("langEn").className = l === "en" ? "on" : "";
   $("q").placeholder = l === "en" ? "英単語・日本語を入力 (アルク)" : "言葉を入力 (コトバンク)";
@@ -252,7 +260,7 @@ $("tabHistory").onclick = () => show("history");
 $("reloadBtn").onclick = () => location.reload();
 
 /* ===== クラウド同期 (Firebase + Googleログイン) ===== */
-// そろそろ・とりあえずと同じFirebaseプロジェクトを使い、保存先だけ別(apps/kotoba)
+// そろそろ・とりあえずと同じFirebaseプロジェクトを使い、保存先だけ別(apps/dictionary-app。改名前は apps/kotoba)
 const firebaseConfig = {
   apiKey: "AIzaSyC6KM0ZiG4boea6h8KL7lGEnREC2Itm9oY",
   authDomain: "cycle-tracker-app-77383.firebaseapp.com",
@@ -277,9 +285,10 @@ let fbUser = null, fbDb = null, fbUnsub = null;
   renderSyncUI();
 })();
 
-function dataDoc() {
-  return fbDb.collection("users").doc(fbUser.uid).collection("apps").doc("kotoba");
+function appDoc(name) {
+  return fbDb.collection("users").doc(fbUser.uid).collection("apps").doc(name);
 }
+const dataDoc = () => appDoc("dictionary-app");
 function onAuthChanged(user) {
   fbUser = user;
   renderSyncUI();
@@ -287,10 +296,13 @@ function onAuthChanged(user) {
   if (user) startSync();
 }
 function startSync() {
-  dataDoc().get().then(snap => {
+  // 新しい保存先が空なら、改名前(apps/kotoba)を読んで引き継ぐ。古い方は消さない
+  dataDoc().get().then(async snap => {
+    let migrated = false;
+    if (!snap.exists) { snap = await appDoc("kotoba").get(); migrated = snap.exists; }
     const remote = snap.exists ? snap.data() : null;
     const remoteAt = remote ? (remote.updatedAt || 0) : -1;
-    if (remote && remoteAt >= state.updatedAt) applyRemote(remote);
+    if (remote && remoteAt >= state.updatedAt) { applyRemote(remote); if (migrated) pushToCloud(); }
     else pushToCloud(); // ローカルが新しい/クラウドが空 → 上げる
     fbUnsub = dataDoc().onSnapshot(s => {
       if (!s.exists) return;
