@@ -25,26 +25,19 @@
   li { display: flex; align-items: center; border-bottom: 1px solid #eee; }
   li a { flex: 1; padding: 14px 4px; color: inherit; text-decoration: none; font-size: 17px; }
   li button { border: none; background: none; color: #999; font-size: 14px; padding: 12px 8px; }
+  .lang { display: flex; background: #f0f0f3; border-radius: 10px; padding: 3px; margin-bottom: 12px; }
+  .lang button { flex: 1; border: none; background: none; border-radius: 8px; padding: 8px; font-size: 14px; color: #888; }
+  .lang button.on { background: #fff; color: #007aff; font-weight: bold; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+  .badge { flex-shrink: 0; font-size: 11px; font-weight: 700; border-radius: 6px; padding: 2px 6px; margin-right: 4px; }
+  .badge.ja { background: #e8f1ff; color: #007aff; }
+  .badge.en { background: #fff1e0; color: #d97706; }
+  .lang.small { margin: 8px 0 0; }
   .note { color: #888; font-size: 13px; padding: 12px 4px; }
   .count { color: #888; font-size: 13px; padding: 4px 4px 0; }
   .toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); width: max-content; max-width: min(90vw, 420px); background: rgba(40,40,40,.88); color: #fff; font-size: 13px; padding: 9px 14px; border-radius: 18px; z-index: 50; }
   nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; border-top: 1px solid #ddd; background: #fafafa; padding-bottom: env(safe-area-inset-bottom); }
   nav button { flex: 1; border: none; background: none; padding: 12px; font-size: 14px; color: #888; }
   nav button.on { color: #007aff; font-weight: bold; }
-  .history-tools { display:flex; gap:8px; margin:4px 0 8px; }
-  .history-tools button { flex:1; border:1px solid #ddd; background:#fff; border-radius:18px; padding:8px 4px; color:#666; font-size:13px; }
-  .history-tools button.on { background:#eef6ff; border-color:#2685d5; color:#1673c5; font-weight:700; }
-  .lang-icon { width:25px; height:25px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; margin:0 9px 0 3px; flex-shrink:0; }
-  .lang-ja { background:#e7f2ff; color:#1876c9; }
-  .lang-en { background:#e5f7ed; color:#16834a; }
-  .history-link { display:flex; align-items:center; flex:1; min-width:0; padding:10px 4px; color:inherit; text-decoration:none; font-size:17px; }
-  .history-link span:last-child { overflow-wrap:anywhere; }
-  .english-panel { padding-top:4px; }
-  .english-panel p { color:#777; font-size:13px; line-height:1.6; }
-  .alc-link { display:block; padding:14px; margin:12px 0 18px; border-radius:10px; background:#f2f7f3; color:#167343; text-decoration:none; font-weight:700; text-align:center; }
-  .add-row { display:flex; gap:8px; align-items:center; }
-  .add-row input { min-width:0; }
-  .add-row button { border:0; border-radius:8px; padding:12px 14px; background:#16834a; color:white; font-weight:700; white-space:nowrap; }
   [hidden] { display: none; }
 </style>
 </head>
@@ -59,6 +52,10 @@
       </button>
     </div>
   </div>
+  <div id="langBar" class="lang">
+    <button id="langJa" class="on">日本語</button>
+    <button id="langEn">English</button>
+  </div>
   <section id="search">
     <div class="field">
       <input id="q" type="search" placeholder="言葉を入力" autocomplete="off">
@@ -66,30 +63,18 @@
     </div>
     <ul id="cands"></ul>
   </section>
-  <section id="english" hidden>
-    <div class="english-panel">
-      <p>英語の意味を調べるときは、公式の英辞郎 on the WEBを利用してください。</p>
-      <a class="alc-link" href="https://eow.alc.co.jp/" target="_blank" rel="noopener noreferrer">英辞郎 on the WEBを開く ↗</a>
-      <p>調べた単語を下に入力すると、このアプリの履歴に追加できます。</p>
-      <div class="add-row">
-        <input id="englishWord" type="text" placeholder="調べた英単語・フレーズ" autocomplete="off">
-        <button id="addEnglish">履歴に追加</button>
-      </div>
-    </div>
-  </section>
   <section id="history" hidden>
-    <div class="history-tools" aria-label="履歴の言語で絞り込み">
-      <button type="button" data-filter="all">すべて</button>
-      <button type="button" data-filter="ja">日本語</button>
-      <button type="button" data-filter="en">英語</button>
+    <div class="lang small">
+      <button id="fAll">すべて</button>
+      <button id="fJa">日本語</button>
+      <button id="fEn">English</button>
     </div>
     <div id="count" class="count"></div>
     <ul id="hist"></ul>
   </section>
 </main>
 <nav>
-  <button id="tabJapanese" class="on">日本語</button>
-  <button id="tabEnglish">英語</button>
+  <button id="tabSearch" class="on">検索</button>
   <button id="tabHistory">履歴</button>
 </nav>
 
@@ -102,23 +87,24 @@ const $ = id => document.getElementById(id);
 const KEY = "kotoba";
 // コトバンク内の検索1件目に直接飛ぶ(DuckDuckGoの "\" 指定)。飛べない端末でも結果がコトバンクだけになる
 const kotobankUrl = w => "https://duckduckgo.com/?q=" + encodeURIComponent("\\" + w + " site:kotobank.jp");
+// 英語はアルク(英辞郎)の検索結果ページを開く
+const alcUrl = w => "https://eow.alc.co.jp/search?q=" + encodeURIComponent(w);
+const urlOf = (lang, w) => lang === "en" ? alcUrl(w) : kotobankUrl(w);
+let hfilter = ["all", "ja", "en"].includes(localStorage.getItem("kotobaHistFilter")) ? localStorage.getItem("kotobaHistFilter") : "all";
+let lang = localStorage.getItem("kotobaLang") === "en" ? "en" : "ja";
 
 // 古い形式が残っていても動くよう、読み込み時に形を整える
 function normalize(d) {
-  const raw = d && Array.isArray(d.history) ? d.history : [];
-  const h = raw.map(x => {
-    if (typeof x === "string") return { word: x, language: "ja" };
-    if (x && typeof x.word === "string" && (x.language === "ja" || x.language === "en")) return { word: x.word, language: x.language };
-    return null;
-  }).filter(Boolean);
-  const seen = new Set();
-  const unique = h.filter(x => {
-    const key = x.language + "|" + x.word;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-  return { history: unique, updatedAt: (d && d.updatedAt) || 0 };
+  const ok = x => x && typeof x.w === "string" && (x.l === "ja" || x.l === "en");
+  let items = d && Array.isArray(d.items) ? d.items.filter(ok).map(x => ({ w: x.w, l: x.l, t: x.t || 0 })) : null;
+  if (!items) { // 旧形式(言語別の配列)から引き継ぐ
+    const strs = a => Array.isArray(a) ? a.filter(x => typeof x === "string") : [];
+    items = [
+      ...strs(d && d.history).map(w => ({ w, l: "ja", t: 0 })),
+      ...strs(d && d.historyEn).map(w => ({ w, l: "en", t: 0 }))
+    ];
+  }
+  return { items, updatedAt: (d && d.updatedAt) || 0 };
 }
 let state = (() => {
   try {
@@ -135,14 +121,13 @@ function save() {
   localStorage.setItem(KEY, JSON.stringify(state));
   if (!applyingRemote) pushToCloud();
 }
-function addHistory(word, language) {
-  const entry = { word, language };
-  state.history = [entry, ...state.history.filter(x => !(x.word === word && x.language === language))];
+function addHistory(w, l) {
+  state.items = [{ w, l, t: Date.now() }, ...state.items.filter(x => !(x.w === w && x.l === l))];
   save();
 }
-function removeHistory(entry) {
-  if (!confirm("「" + entry.word + "」を履歴から削除しますか？")) return;
-  state.history = state.history.filter(x => !(x.word === entry.word && x.language === entry.language));
+function removeHistory(w, l) {
+  if (!confirm("「" + w + "」を履歴から削除しますか？")) return;
+  state.items = state.items.filter(x => !(x.w === w && x.l === l));
   save();
   renderHistory();
 }
@@ -155,57 +140,47 @@ function showToast(msg) {
   setTimeout(() => t.remove(), 2000);
 }
 
-function row(word, onRemove) {
+function row(word, onRemove, l = lang) {
   const li = document.createElement("li");
   const a = document.createElement("a");
   a.textContent = word;
-  a.href = kotobankUrl(word);
+  a.href = urlOf(l, word);
   a.rel = "noreferrer";
-  a.addEventListener("click", () => { addHistory(word, "ja"); if (onRemove) renderHistory(); });
+  a.addEventListener("click", () => { addHistory(word, l); if (onRemove) renderHistory(); });
   li.append(a);
   if (onRemove) {
+    const bd = document.createElement("span");
+    bd.className = "badge " + l;
+    bd.textContent = l === "en" ? "EN" : "日本語";
+    li.append(bd);
     const b = document.createElement("button");
     b.textContent = "削除";
-    b.addEventListener("click", () => onRemove({ word, language: "ja" }));
+    b.addEventListener("click", () => onRemove(word, l));
     li.append(b);
   }
   return li;
 }
 
-let historyFilter = localStorage.getItem("kotobaHistoryFilter") || "all";
-if (!["all", "ja", "en"].includes(historyFilter)) historyFilter = "all";
 function renderHistory() {
   const ul = $("hist");
   ul.replaceChildren();
-  document.querySelectorAll("[data-filter]").forEach(b => b.classList.toggle("on", b.dataset.filter === historyFilter));
-  const list = state.history.filter(x => historyFilter === "all" || x.language === historyFilter);
-  $("count").textContent = list.length + "件";
+  ["all", "ja", "en"].forEach(f => $({ all: "fAll", ja: "fJa", en: "fEn" }[f]).className = hfilter === f ? "on" : "");
+  const list = state.items.filter(x => hfilter === "all" || x.l === hfilter);
+  $("count").textContent = list.length + "件の履歴";
   if (!list.length) {
     ul.innerHTML = '<li class="note">まだ履歴はありません</li>';
     return;
   }
-  list.forEach(entry => {
-    const li = document.createElement("li");
-    const a = document.createElement("a");
-    a.className = "history-link";
-    a.href = entry.language === "ja" ? kotobankUrl(entry.word) : "https://eow.alc.co.jp/search?q=" + encodeURIComponent(entry.word);
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    const icon = document.createElement("span");
-    icon.className = "lang-icon " + (entry.language === "ja" ? "lang-ja" : "lang-en");
-    icon.textContent = entry.language === "ja" ? "あ" : "A";
-    icon.setAttribute("aria-label", entry.language === "ja" ? "日本語" : "英語");
-    const label = document.createElement("span");
-    label.textContent = entry.word;
-    a.append(icon, label);
-    li.append(a);
-    const b = document.createElement("button");
-    b.textContent = "削除";
-    b.addEventListener("click", () => removeHistory(entry));
-    li.append(b);
-    ul.append(li);
-  });
+  list.forEach(x => ul.append(row(x.w, removeHistory, x.l)));
 }
+function setFilter(f) {
+  hfilter = f;
+  localStorage.setItem("kotobaHistFilter", f);
+  renderHistory();
+}
+$("fAll").onclick = () => setFilter("all");
+$("fJa").onclick = () => setFilter("ja");
+$("fEn").onclick = () => setFilter("en");
 
 // 候補はWikipediaの見出し検索から取得(コトバンクには自動アクセスしない)
 let timer, seq = 0;
@@ -229,8 +204,16 @@ async function suggest() {
   const mine = ++seq;
   let words = [];
   try {
-    const url = "https://ja.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=10&search=" + encodeURIComponent(text);
-    words = (await (await fetch(url)).json())[1];
+    if (lang === "en") {
+      // 英語の候補はDatamuse(単語の補完)。日本語で入力したときは候補なしでそのままアルクへ
+      if (/^[\x20-\x7e]+$/.test(text)) {
+        const url = "https://api.datamuse.com/sug?max=10&s=" + encodeURIComponent(text);
+        words = (await (await fetch(url)).json()).map(x => x.word);
+      }
+    } else {
+      const url = "https://ja.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&limit=10&search=" + encodeURIComponent(text);
+      words = (await (await fetch(url)).json())[1];
+    }
   } catch (e) {
     const li = document.createElement("li");
     li.className = "note";
@@ -242,36 +225,30 @@ async function suggest() {
   if (!words.includes(text)) ul.append(row(text));
 }
 
+function setLang(l) {
+  lang = l;
+  localStorage.setItem("kotobaLang", l);
+  $("langJa").className = l === "ja" ? "on" : "";
+  $("langEn").className = l === "en" ? "on" : "";
+  $("q").placeholder = l === "en" ? "英単語・日本語を入力 (アルク)" : "言葉を入力 (コトバンク)";
+  $("q").value = "";
+  $("clearBtn").hidden = true;
+  $("cands").replaceChildren();
+  seq++;
+  renderHistory();
+}
+$("langJa").onclick = () => setLang("ja");
+$("langEn").onclick = () => setLang("en");
 function show(tab) {
-  $("search").hidden = tab !== "japanese";
-  $("english").hidden = tab !== "english";
+  $("search").hidden = tab !== "search";
+  $("langBar").hidden = tab !== "search";
   $("history").hidden = tab !== "history";
-  $("tabJapanese").className = tab === "japanese" ? "on" : "";
-  $("tabEnglish").className = tab === "english" ? "on" : "";
+  $("tabSearch").className = tab === "search" ? "on" : "";
   $("tabHistory").className = tab === "history" ? "on" : "";
   if (tab === "history") renderHistory();
 }
-$("tabJapanese").onclick = () => show("japanese");
-$("tabEnglish").onclick = () => show("english");
+$("tabSearch").onclick = () => show("search");
 $("tabHistory").onclick = () => show("history");
-$("addEnglish").onclick = () => {
-  const input = $("englishWord");
-  const word = input.value.trim();
-  if (!word) { showToast("単語を入力してください"); return; }
-  addHistory(word, "en");
-  input.value = "";
-  showToast("英語の履歴に追加しました");
-};
-$("englishWord").addEventListener("keydown", e => {
-  if (e.key === "Enter") $("addEnglish").click();
-});
-document.querySelectorAll("[data-filter]").forEach(b => {
-  b.addEventListener("click", () => {
-    historyFilter = b.dataset.filter;
-    localStorage.setItem("kotobaHistoryFilter", historyFilter);
-    renderHistory();
-  });
-});
 $("reloadBtn").onclick = () => location.reload();
 
 /* ===== クラウド同期 (Firebase + Googleログイン) ===== */
@@ -357,7 +334,7 @@ function onSyncClick() {
     }
   });
 }
-renderHistory();
+setLang(lang);
 </script>
 </body>
 </html>
